@@ -1,23 +1,24 @@
-nx = 200     # number of elements per side
-ny = 100     # number of elements per side
+nx = 50     # number of elements per side
+ny = 25     # number of elements per side
 dx = 2       # ND size of the side
 dy = 1       # ND size of the side
 
-k = 1
-D_p = 1
+k1 = 2
+k2 = 1
+D_p1 = 5
+D_p2 = 1
 D_t = 10
 
 
 [Mesh]
-    # [2p]
-        # generate a 2D mesh
-        type = GeneratedMesh
-        dim = 2
-        nx = ${nx}
-        ny = ${ny}
-        xmax = ${dx}
-        ymax = ${dy}
-    # []
+    # generate a 2D mesh
+    type = GeneratedMesh
+    dim = 2
+    nx = ${nx}
+    ny = ${ny}
+    xmax = ${dx}
+    ymax = ${dy}
+    uniform_refine = 2
 []
 
 [Variables]
@@ -25,7 +26,9 @@ D_t = 10
     [c_s]
     []
     # polymer volume fraction
-    [c_p]
+    [c_p1]
+    []
+    [c_p2]
     []
     # tissue volume fraction
     [c_t]
@@ -38,15 +41,31 @@ D_t = 10
         value = 0
         variable = c_s
     []
-    [c_p]
-        type = ConstantIC
-        value = 1
-        variable = c_p
+    [c_p1]
+        type = SolutionIC
+        from_variable = 'c'
+        solution_uo = 2phase
+        variable = c_p1
+    []
+    [c_p2]
+        type = SolutionIC
+        from_variable = 'c2'
+        solution_uo = 2phase
+        variable = c_p2
     []
     [c_t]
         type = ConstantIC
         value = 0
         variable = c_t
+    []
+[]
+
+[UserObjects]
+    [2phase]
+        type = SolutionUserObject
+        mesh = 'ic_2p/2phase_0.5.e'
+        system_variables = 'c c2'
+        timestep = LATEST
     []
 []
 
@@ -70,36 +89,61 @@ D_t = 10
         variable = c_s
         diffusivity = D_s
     []
-    [c_s_react]
+    [c_s_react1]
         type = ADMatCoupledForce
-        v = c_p
+        v = c_p1
         variable = c_s
         mat_prop_coef = C_s
-        coef = ${fparse -k}
+        coef = ${fparse -k1}
+    []
+    [c_s_react2]
+        type = ADMatCoupledForce
+        v = c_p2
+        variable = c_s
+        mat_prop_coef = C_s
+        coef = ${fparse -k2}
     []
     # Polymer kernels
-    [c_p_dt]
+    [c_p1_dt]
         type = TimeDerivative
-        variable = c_p
+        variable = c_p1
     []
-    [c_p_react]
+    [c_p1_react]
         type = ADMatCoupledForce
         v = c_s
-        variable = c_p
-        mat_prop_coef = C_p
-        coef = ${fparse -k}
+        variable = c_p1
+        mat_prop_coef = C_p1
+        coef = ${fparse -k1}
+    []
+    [c_p2_dt]
+        type = TimeDerivative
+        variable = c_p2
+    []
+    [c_p2_react]
+        type = ADMatCoupledForce
+        v = c_s
+        variable = c_p2
+        mat_prop_coef = C_p2
+        coef = ${fparse -k2}
     []
     # Tissue kernels
     [c_t_dt]
         type = TimeDerivative
         variable = c_t
     []
-    [c_t_react]
+    [c_t_react1]
         type = ADMatCoupledForce
-        v = c_p
+        v = c_p1
         mat_prop_coef = C_s
         variable = c_t
-        coef = ${k}
+        coef = ${k1}
+    []
+    [c_t_react2]
+        type = ADMatCoupledForce
+        v = c_p2
+        mat_prop_coef = C_s
+        variable = c_t
+        coef = ${k2}
     []
 []
 
@@ -108,18 +152,24 @@ D_t = 10
     [diffusivity_s]
         type = DerivativeParsedMaterial
         property_name = D_s
-        coupled_variables = 'c_p c_t'
-        constant_names = 'D_p D_t'
-        constant_expressions = '${D_p} ${D_t}'
-        expression = 'D_p*c_p + D_t*c_t'
+        coupled_variables = 'c_p1 c_p2 c_t'
+        constant_names = 'D_p1 D_p2 D_t'
+        constant_expressions = '${D_p1} ${D_p2} ${D_t}'
+        expression = 'D_p1*c_p1 + D_p2*c_p2 + D_t*c_t'
     []
-    # Tissue properties
-    [reaction_t]
-        type = ADParsedMaterial
-        property_name = C_ps
-        coupled_variables = 'c_p c_s'
-        expression = 'c_p*c_s'
-    []
+    # # Tissue properties
+    # [reaction_t1]
+    #     type = ADParsedMaterial
+    #     property_name = C_ps
+    #     coupled_variables = 'c_p1 c_s'
+    #     expression = 'c_p1*c_s'
+    # []
+    # [reaction_t2]
+    #     type = ADParsedMaterial
+    #     property_name = C_ps
+    #     coupled_variables = 'c_p1 c_s'
+    #     expression = 'c_p1*c_s'
+    # []
     # Variables as materials
     [C_s]
         type = ADParsedMaterial
@@ -127,11 +177,17 @@ D_t = 10
         coupled_variables = 'c_s'
         expression = 'c_s'
     []
-    [C_p]
+    [C_p1]
         type = ADParsedMaterial
-        property_name = C_p
-        coupled_variables = 'c_p'
-        expression = 'c_p'
+        property_name = C_p1
+        coupled_variables = 'c_p1'
+        expression = 'c_p1'
+    []
+    [C_p2]
+        type = ADParsedMaterial
+        property_name = C_p2
+        coupled_variables = 'c_p2'
+        expression = 'c_p2'
     []
 []
 
@@ -184,17 +240,17 @@ D_t = 10
     # # Automatic scaling for u and w
     automatic_scaling = true
 
-    # [Adaptivity]
-    #     coarsen_fraction = 0.1
-    #     refine_fraction = 0.7
-    #     max_h_level = 2
-    # []
+    [Adaptivity]
+        coarsen_fraction = 0.1
+        refine_fraction = 0.7
+        max_h_level = 2
+    []
 []
 
 [Outputs]
     [ex]
         type = Exodus
-        file_base = output/pst_t1
+        file_base = output/pst_t2
         time_step_interval = 1
         execute_on = 'INITIAL TIMESTEP_END'
     []
