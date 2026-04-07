@@ -26,6 +26,21 @@ D_v = 100
     xmax = ${dx}
     ymax = ${dy}
     uniform_refine = 2
+    add_subdomain_ids = '1'
+[]
+
+[MeshModifiers]
+    [void]
+        type = CoupledVarThresholdElementSubdomainModifier
+        coupled_var = c_v
+        criterion_type = ABOVE
+        subdomain_id = 1
+        # complement_subdomain_id = 0
+        threshold = 0
+        execute_on = 'INITIAL TIMESTEP_BEGIN'
+        force_preic = false
+        allow_duplicate_execution_on_initial = true
+    []
 []
 
 [Variables]
@@ -54,6 +69,18 @@ D_v = 100
         order = CONSTANT
         family = MONOMIAL
     []
+    [stress_max]
+        order = CONSTANT
+        family = MONOMIAL
+    []
+    [stress_min]
+        order = CONSTANT
+        family = MONOMIAL
+    []
+    [theta]
+        order = CONSTANT
+        family = MONOMIAL
+    []
 []
 
 [AuxKernels]
@@ -65,6 +92,24 @@ D_v = 100
       index_j = 0
       execute_on = 'timestep_end'
     []
+    [stress_max]
+        type = RankTwoScalarAux
+        rank_two_tensor = cauchy_stress
+        variable = stress_max
+        scalar_type = MaxPrincipal
+    []
+    [stress_min]
+        type = RankTwoScalarAux
+        rank_two_tensor = cauchy_stress
+        variable = stress_min
+        scalar_type = MinPrincipal
+    []
+    [theta]
+        type = ParsedAux
+        coupled_variables = 'stress_max stress_min'
+        expression = 'atan(stress_max/(stress_min + 1e-10))'
+        variable = theta
+    []  
 []
 
 [ICs]
@@ -128,7 +173,7 @@ D_v = 100
         type = Pressure
         variable = disp_x
         boundary = right
-        factor = 1e9
+        factor = -1e9
     []
     [bottom_fix]
         type = DirichletBC
@@ -175,6 +220,13 @@ D_v = 100
         mat_prop_coef = C_p1
         coef = ${fparse -k1}
     []
+    [c_p1_react2]
+        type = ADMatCoupledForce
+        v = c_t
+        variable = c_p1
+        mat_prop_coef = kbg
+        coef = -1
+    []
     [c_p2_dt]
         type = TimeDerivative
         variable = c_p2
@@ -186,10 +238,24 @@ D_v = 100
         mat_prop_coef = C_p2
         coef = ${fparse -k2}
     []
+    [c_p2_react2]
+        type = ADMatCoupledForce
+        v = c_t
+        variable = c_p2
+        mat_prop_coef = kbg
+        coef = -1
+    []
     # Void kernels
     [c_v_dt]
         type = TimeDerivative
         variable = c_v
+    []
+    [c_v_react]
+        type = ADMatCoupledForce
+        v = c_t
+        variable = c_v
+        mat_prop_coef = kbg
+        coef = -1
     []
     # Tissue kernels
     [c_t_dt]
@@ -209,6 +275,11 @@ D_v = 100
         mat_prop_coef = C_s
         variable = c_t
         coef = ${k2}
+    []
+    [c_t_react3]
+        type = ADMatReaction
+        reaction_rate = kb
+        variable = c_t
     []
     # Mechanical Kernels
     [sdx]
@@ -257,6 +328,23 @@ D_v = 100
         property_name = C_v
         coupled_variables = 'c_v'
         expression = 'c_v'
+    []
+    [kbg]
+        type = ADParsedMaterial
+        property_name = kbg
+        coupled_variables = 'theta'
+        expression = '1 + cos(theta)^2'
+    []
+    [kbd]
+        type = ADParsedMaterial
+        property_name = kbd
+        expression = -1
+    []
+    [kb]
+        type = ADDerivativeSumMaterial
+        property_name = kb
+        coupled_variables = 'theta'
+        sum_materials = 'kbg kbd'
     []
     # Mechanical properties
     [strain]
