@@ -37,9 +37,10 @@ D_v = 100
         subdomain_id = 1
         # complement_subdomain_id = 0
         threshold = 0
-        execute_on = 'INITIAL TIMESTEP_BEGIN'
-        force_preic = false
+        execute_on = 'TIMESTEP_BEGIN'
+        force_preic = true
         allow_duplicate_execution_on_initial = true
+        reinitialization_strategy = 'NONE'
     []
 []
 
@@ -124,6 +125,7 @@ D_v = 100
         solution_uo = 2phase
         variable = c_p1
         from_subdomains = '0 1'
+        block = '0'
     []
     [c_p2]
         type = SolutionIC
@@ -131,6 +133,7 @@ D_v = 100
         solution_uo = 2phase
         variable = c_p2
         from_subdomains = '0 1'
+        block = '0'
     []
     [c_v]
         type = SolutionIC
@@ -138,6 +141,7 @@ D_v = 100
         solution_uo = 2phase
         variable = c_v
         from_subdomains = '0 1'
+        block = '0'
     []
     [c_t]
         type = ConstantIC
@@ -436,4 +440,5 @@ D_v = 100
 
 [Debug]
     show_material_props = true
+    show_execution_order = 'INITIAL TIMESTEP_BEGIN'
 []
