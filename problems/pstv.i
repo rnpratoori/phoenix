@@ -3,13 +3,14 @@ ny = 25     # number of elements per side
 dx = 2       # ND size of the side
 dy = 1       # ND size of the side
 
-k1 = 2
-k2 = 1
+k1 = 1
+k2 = 0.1
+kbg = 0.05
 # kv = 100
-D_p1 = 5
-D_p2 = 1
-D_t = 10
-D_v = 100
+D_p1 = 0.05
+D_p2 = 0.01
+D_t = 1
+D_v = 200
 
 
 [Mesh]
@@ -21,6 +22,22 @@ D_v = 100
     xmax = ${dx}
     ymax = ${dy}
     uniform_refine = 2
+    add_subdomain_ids = '1'
+[]
+
+[MeshModifiers]
+    [void]
+        type = CoupledVarThresholdElementSubdomainModifier
+        coupled_var = c_v
+        criterion_type = ABOVE
+        subdomain_id = 1
+        # complement_subdomain_id = 0
+        threshold = 1e-3
+        execute_on = 'TIMESTEP_BEGIN'
+        force_preic = true
+        allow_duplicate_execution_on_initial = true
+        reinitialization_strategy = 'NONE'
+    []
 []
 
 [Variables]
@@ -74,6 +91,24 @@ D_v = 100
     []
 []
 
+[AuxVariables]
+    [c_v_new]
+        order = CONSTANT
+        family = MONOMIAL
+        outputs = 'ex'
+    []
+[]
+
+[AuxKernels]
+    [c_v_new]
+        type = ParsedAux
+        expression = '1 - (c_p1 + c_p2 + c_t)'
+        coupled_variables = 'c_p1 c_p2 c_t'
+        variable = c_v_new
+    []
+[]
+
+
 [UserObjects]
     [2phase]
         type = SolutionUserObject
@@ -117,13 +152,6 @@ D_v = 100
         mat_prop_coef = C_s
         coef = ${fparse -k2}
     []
-    # [c_s_react_v]
-    #     type = ADMatCoupledForce
-    #     v = c_v
-    #     variable = c_s
-    #     mat_prop_coef = C_s
-    #     coef = ${fparse -kv}
-    # []
     # Polymer kernels
     [c_p1_dt]
         type = TimeDerivative
@@ -136,6 +164,13 @@ D_v = 100
         mat_prop_coef = C_p1
         coef = ${fparse -k1}
     []
+    [c_p1_react2]
+        type = ADMatCoupledForce
+        v = c_t
+        variable = c_p1
+        mat_prop_coef = C_p1
+        coef = ${fparse -kbg}
+    []
     [c_p2_dt]
         type = TimeDerivative
         variable = c_p2
@@ -147,18 +182,25 @@ D_v = 100
         mat_prop_coef = C_p2
         coef = ${fparse -k2}
     []
+    [c_p2_react2]
+        type = ADMatCoupledForce
+        v = c_t
+        variable = c_p2
+        mat_prop_coef = C_p2
+        coef = ${fparse -kbg}
+    []
     # Void kernels
     [c_v_dt]
         type = TimeDerivative
         variable = c_v
     []
-    # [c_v_react]
-    #     type = ADMatCoupledForce
-    #     v = c_s
-    #     variable = c_v
-    #     mat_prop_coef = C_v
-    #     coef = ${fparse -kv}
-    # []
+    [c_v_react]
+        type = ADMatCoupledForce
+        v = c_t
+        variable = c_v
+        mat_prop_coef = C_v
+        coef = ${fparse -kbg}
+    []
     # Tissue kernels
     [c_t_dt]
         type = TimeDerivative
@@ -169,14 +211,19 @@ D_v = 100
         v = c_p1
         mat_prop_coef = C_s
         variable = c_t
-        coef = ${k1}
     []
     [c_t_react2]
         type = ADMatCoupledForce
         v = c_p2
         mat_prop_coef = C_s
         variable = c_t
-        coef = ${k2}
+    []
+    [c_t_react3]
+        type = ADMatCoupledForce
+        v = 'c_p1 c_p2 c_v'
+        mat_prop_coef = C_t
+        variable = c_t
+        coef = ${fparse kbg}
     []
 []
 
@@ -190,19 +237,6 @@ D_v = 100
         constant_expressions = '${D_p1} ${D_p2} ${D_t} ${D_v}'
         expression = 'D_p1*c_p1 + D_p2*c_p2 + D_t*c_t + D_v*c_v'
     []
-    # # Tissue properties
-    # [reaction_t1]
-    #     type = ADParsedMaterial
-    #     property_name = C_ps
-    #     coupled_variables = 'c_p1 c_s'
-    #     expression = 'c_p1*c_s'
-    # []
-    # [reaction_t2]
-    #     type = ADParsedMaterial
-    #     property_name = C_ps
-    #     coupled_variables = 'c_p1 c_s'
-    #     expression = 'c_p1*c_s'
-    # []
     # Variables as materials
     [C_s]
         type = ADParsedMaterial
@@ -228,6 +262,19 @@ D_v = 100
         coupled_variables = 'c_v'
         expression = 'c_v'
     []
+    [C_t]
+        type = ADParsedMaterial
+        property_name = C_t
+        coupled_variables = 'c_t'
+        expression = 'c_t'
+    []
+    [C_bg]
+        type = ADParsedMaterial
+        property_name = C_bg
+        coupled_variables = 'c_p1 c_p2 c_v'
+        expression = 'c_p1 + c_p2 + c_v'
+        # expression = 'c_p1 + c_p2'
+    []
 []
 
 [Preconditioning]
@@ -252,8 +299,11 @@ D_v = 100
 
     petsc_options = '-ksp_converged_reason -snes_converged_reason -snes_ksp_ew '
 
-    petsc_options_iname = '-pc_type -ksp_type -pc_factor_mat_solver_type'
-    petsc_options_value = 'lu       preonly   mumps'
+    # petsc_options_iname = '-pc_type -ksp_type -pc_factor_mat_solver_type'
+    # petsc_options_value = 'lu       preonly   mumps'
+
+    petsc_options_iname = '-pc_type -ksp_type'
+    petsc_options_value = 'hypre gmres'
 
     line_search = 'basic'
 
@@ -272,9 +322,9 @@ D_v = 100
         optimal_iterations = 10
     []
 
-    dtmax = 1e-2
+    dtmax = 1e0
 
-    end_time = 1e0 # seconds
+    end_time = 5 # seconds
 
     # # Automatic scaling for u and w
     automatic_scaling = true
@@ -286,12 +336,22 @@ D_v = 100
     # []
 []
 
+[Times]
+  [output_times]
+    type = TimeIntervalTimes
+    time_interval = 0.1
+    always_include_end_time = true
+  []
+[]
+
 [Outputs]
     [ex]
         type = Exodus
-        file_base = output/pstv_t1
-        time_step_interval = 1
+        file_base = output/pstv_nd
         execute_on = 'INITIAL TIMESTEP_END'
+        time_step_interval = 1
+        sync_times_object = output_times
+        # sync_only = true
     []
 []
 
