@@ -7,6 +7,7 @@ k1 = 1
 k2 = 0.1
 kbg = 0.05
 kv = 100
+ct_seed_tol = 1e-3
 D_p1 = 0.05
 D_p2 = 0.01
 D_t = 1
@@ -14,7 +15,6 @@ D_v = 200
 
 
 [Mesh]
-    # generate a 2D mesh
     type = GeneratedMesh
     dim = 2
     nx = ${nx}
@@ -31,8 +31,8 @@ D_v = 200
         coupled_var = c_v
         criterion_type = ABOVE
         subdomain_id = 1
-        # complement_subdomain_id = 0
-        threshold = 1e-2
+        complement_subdomain_id = 0
+        threshold = 5e-2
         execute_on = 'TIMESTEP_BEGIN'
         force_preic = true
         allow_duplicate_execution_on_initial = true
@@ -41,20 +41,11 @@ D_v = 200
 []
 
 [Variables]
-    # solvent volume fraction
-    [c_s]
-    []
-    # polymer volume fraction
-    [c_p1]
-    []
-    [c_p2]
-    []
-    # void volume fraction
-    [c_v]
-    []
-    # tissue volume fraction
-    [c_t]
-    []
+    [c_s]  []
+    [c_p1] []
+    [c_p2] []
+    [c_v]  []
+    [c_t]  []
 []
 
 [ICs]
@@ -112,7 +103,6 @@ D_v = 200
     []
 []
 
-
 [UserObjects]
     [2phase]
         type = SolutionUserObject
@@ -132,7 +122,7 @@ D_v = 200
 []
 
 [Kernels]
-    # Solvent kernels
+    # Solvent kernels (c_s is independent of the constraint)
     [c_s_dt]
         type = TimeDerivative
         variable = c_s
@@ -163,7 +153,7 @@ D_v = 200
         mat_prop_coef = C_s_bound
         coef = ${fparse kv}
     []
-    # Polymer kernels
+    # Polymer 1 kernels
     [c_p1_dt]
         type = TimeDerivative
         variable = c_p1
@@ -179,9 +169,10 @@ D_v = 200
         type = ADMatCoupledForce
         v = c_t
         variable = c_p1
-        mat_prop_coef = C_p1
+        mat_prop_coef = C_p1_active
         coef = ${fparse -kbg}
     []
+    # Polymer 2 kernels
     [c_p2_dt]
         type = TimeDerivative
         variable = c_p2
@@ -197,7 +188,7 @@ D_v = 200
         type = ADMatCoupledForce
         v = c_t
         variable = c_p2
-        mat_prop_coef = C_p2
+        mat_prop_coef = C_p2_active
         coef = ${fparse -kbg}
     []
     # Void kernels
@@ -209,7 +200,7 @@ D_v = 200
         type = ADMatCoupledForce
         v = c_t
         variable = c_v
-        mat_prop_coef = C_v
+        mat_prop_coef = C_v_active
         coef = ${fparse -kbg}
     []
     # Tissue kernels
@@ -233,21 +224,28 @@ D_v = 200
     []
     [c_t_react3]
         type = ADMatCoupledForce
-        v = 'c_p1 c_p2 c_v'
-        mat_prop_coef = C_t
+        v = 'c_p1'
+        mat_prop_coef = C_t_active
+        variable = c_t
+        coef = ${fparse kbg}
+    []
+    [c_t_react4]
+        type = ADMatCoupledForce
+        v = 'c_p2'
+        mat_prop_coef = C_t_active
+        variable = c_t
+        coef = ${fparse kbg}
+    []
+    [c_t_react5]
+        type = ADMatCoupledForce
+        v = 'c_v'
+        mat_prop_coef = C_t_active
         variable = c_t
         coef = ${fparse kbg}
     []
 []
 
 [Bounds]
-    [c_s_ub]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_s
-        bound_type = upper
-        bound_value = 1
-    []
     [c_s_lb]
         type = ConstantBounds
         variable = bounds
@@ -255,10 +253,24 @@ D_v = 200
         bound_type = lower
         bound_value = 0
     []
+    [c_s_ub]
+        type = ConstantBounds
+        variable = bounds
+        bounded_variable = c_s
+        bound_type = upper
+        bound_value = 1
+    []
     [c_p1_lb]
         type = ConstantBounds
         variable = bounds
         bounded_variable = c_p1
+        bound_type = lower
+        bound_value = 0
+    []
+    [c_p2_lb]
+        type = ConstantBounds
+        variable = bounds
+        bounded_variable = c_p2
         bound_type = lower
         bound_value = 0
     []
@@ -268,13 +280,6 @@ D_v = 200
         bounded_variable = c_p1
         bound_type = upper
         bound_value = 1
-    []
-    [c_p2_lb]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_p2
-        bound_type = lower
-        bound_value = 0
     []
     [c_p2_ub]
         type = ConstantBounds
@@ -314,7 +319,6 @@ D_v = 200
 []
 
 [Materials]
-    # Solvent properties
     [diffusivity_s]
         type = DerivativeParsedMaterial
         property_name = D_s
@@ -323,12 +327,11 @@ D_v = 200
         constant_expressions = '${D_p1} ${D_p2} ${D_t} ${D_v}'
         expression = 'D_p1*c_p1 + D_p2*c_p2 + D_t*c_t + D_v*c_v'
     []
-    # Variables as materials
     [C_s]
         type = ADParsedMaterial
         property_name = C_s
         coupled_variables = 'c_s'
-        expression = 'c_s'
+        expression = 'max(c_s, 0)'
     []
     [C_s_bound]
         type = ADParsedMaterial
@@ -340,32 +343,63 @@ D_v = 200
         type = ADParsedMaterial
         property_name = C_p1
         coupled_variables = 'c_p1'
-        expression = 'c_p1'
+        expression = 'max(c_p1, 0)'
     []
     [C_p2]
         type = ADParsedMaterial
         property_name = C_p2
         coupled_variables = 'c_p2'
-        expression = 'c_p2'
+        expression = 'max(c_p2, 0)'
     []
     [C_v]
         type = ADParsedMaterial
         property_name = C_v
         coupled_variables = 'c_v'
-        expression = 'c_v'
+        expression = 'max(c_v, 0)'
     []
     [C_t]
         type = ADParsedMaterial
         property_name = C_t
         coupled_variables = 'c_t'
-        expression = 'c_t'
+        expression = 'max(c_t, 0)'
+    []
+    [C_p1_active]
+        type = ADParsedMaterial
+        property_name = C_p1_active
+        coupled_variables = 'c_p1 c_t'
+        constant_names = 'ct_seed_tol'
+        constant_expressions = '${ct_seed_tol}'
+        expression = 'if(c_t>ct_seed_tol, max(c_p1, 0), 0)'
+    []
+    [C_p2_active]
+        type = ADParsedMaterial
+        property_name = C_p2_active
+        coupled_variables = 'c_p2 c_t'
+        constant_names = 'ct_seed_tol'
+        constant_expressions = '${ct_seed_tol}'
+        expression = 'if(c_t>ct_seed_tol, max(c_p2, 0), 0)'
+    []
+    [C_v_active]
+        type = ADParsedMaterial
+        property_name = C_v_active
+        coupled_variables = 'c_v c_t'
+        constant_names = 'ct_seed_tol'
+        constant_expressions = '${ct_seed_tol}'
+        expression = 'if(c_t>ct_seed_tol, max(c_v, 0), 0)'
+    []
+    [C_t_active]
+        type = ADParsedMaterial
+        property_name = C_t_active
+        coupled_variables = 'c_t'
+        constant_names = 'ct_seed_tol'
+        constant_expressions = '${ct_seed_tol}'
+        expression = 'if(c_t>ct_seed_tol, c_t, 0)'
     []
     [C_bg]
         type = ADParsedMaterial
         property_name = C_bg
         coupled_variables = 'c_p1 c_p2 c_v'
         expression = 'c_p1 + c_p2 + c_v'
-        # expression = 'c_p1 + c_p2'
     []
 []
 
@@ -387,15 +421,12 @@ D_v = 200
 [Executioner]
     type = Transient
     solve_type = 'NEWTON'
-    scheme = bdf2
+    scheme = implicit-euler
 
     petsc_options = '-ksp_converged_reason -snes_converged_reason -snes_ksp_ew -snes_vi_monitor'
 
-    # petsc_options_iname = '-pc_type -ksp_type -pc_factor_mat_solver_type'
-    # petsc_options_value = 'lu       preonly   mumps'
-
-    petsc_options_iname = '-pc_type -ksp_type -snes_type'
-    petsc_options_value = 'hypre gmres vinewtonrsls'
+    petsc_options_iname = '-pc_type -ksp_type -pc_factor_mat_solver_type -snes_type'
+    petsc_options_value = 'lu       preonly   mumps                        vinewtonrsls'
 
     line_search = 'basic'
 
@@ -406,26 +437,18 @@ D_v = 200
     nl_abs_tol = 1e-10
 
     [TimeStepper]
-        # Turn on time stepping
         type = IterationAdaptiveDT
         dt = 1.0e-4
         cutback_factor = 0.8
-        growth_factor = 1.5
+        growth_factor = 1.2
         optimal_iterations = 10
     []
 
-    # dtmax = 1e0
+    dtmax = 1e-2
 
-    end_time = 1e5 # seconds
+    end_time = 1e2 #day
 
-    # # Automatic scaling for u and w
     automatic_scaling = true
-
-    # [Adaptivity]
-    #     coarsen_fraction = 0.1
-    #     refine_fraction = 0.7
-    #     max_h_level = 2
-    # []
 []
 
 [Times]
@@ -439,14 +462,8 @@ D_v = 200
 [Outputs]
     [ex]
         type = Exodus
-        file_base = output/pstv_nd
+        file_base = output/pstv_lm
         execute_on = 'INITIAL TIMESTEP_END'
         time_step_interval = 1
-        # sync_times_object = output_times
-        # sync_only = true
     []
 []
-
-# [Debug]
-#     show_var_residual_norms = true
-# []

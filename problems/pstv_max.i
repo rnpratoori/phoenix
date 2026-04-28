@@ -32,7 +32,7 @@ D_v = 200
         criterion_type = ABOVE
         subdomain_id = 1
         # complement_subdomain_id = 0
-        threshold = 1e-2
+        threshold = 1e-3
         execute_on = 'TIMESTEP_BEGIN'
         force_preic = true
         allow_duplicate_execution_on_initial = true
@@ -90,28 +90,6 @@ D_v = 200
         variable = c_t
     []
 []
-
-[AuxVariables]
-    [c_v_new]
-        order = CONSTANT
-        family = MONOMIAL
-        outputs = 'ex'
-    []
-    [bounds]
-        order = FIRST
-        family = LAGRANGE
-    []
-[]
-
-[AuxKernels]
-    [c_v_new]
-        type = ParsedAux
-        expression = '1 - (c_p1 + c_p2 + c_t)'
-        coupled_variables = 'c_p1 c_p2 c_t'
-        variable = c_v_new
-    []
-[]
-
 
 [UserObjects]
     [2phase]
@@ -240,79 +218,6 @@ D_v = 200
     []
 []
 
-[Bounds]
-    [c_s_ub]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_s
-        bound_type = upper
-        bound_value = 1
-    []
-    [c_s_lb]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_s
-        bound_type = lower
-        bound_value = 0
-    []
-    [c_p1_lb]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_p1
-        bound_type = lower
-        bound_value = 0
-    []
-    [c_p1_ub]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_p1
-        bound_type = upper
-        bound_value = 1
-    []
-    [c_p2_lb]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_p2
-        bound_type = lower
-        bound_value = 0
-    []
-    [c_p2_ub]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_p2
-        bound_type = upper
-        bound_value = 1
-    []
-    [c_t_lb]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_t
-        bound_type = lower
-        bound_value = 0
-    []
-    [c_t_ub]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_t
-        bound_type = upper
-        bound_value = 1
-    []
-    [c_v_lb]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_v
-        bound_type = lower
-        bound_value = 0
-    []
-    [c_v_ub]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_v
-        bound_type = upper
-        bound_value = 1
-    []
-[]
-
 [Materials]
     # Solvent properties
     [diffusivity_s]
@@ -328,7 +233,7 @@ D_v = 200
         type = ADParsedMaterial
         property_name = C_s
         coupled_variables = 'c_s'
-        expression = 'c_s'
+        expression = 'max(c_s, 0)'
     []
     [C_s_bound]
         type = ADParsedMaterial
@@ -340,25 +245,25 @@ D_v = 200
         type = ADParsedMaterial
         property_name = C_p1
         coupled_variables = 'c_p1'
-        expression = 'c_p1'
+        expression = 'max(c_p1, 0)'
     []
     [C_p2]
         type = ADParsedMaterial
         property_name = C_p2
         coupled_variables = 'c_p2'
-        expression = 'c_p2'
+        expression = 'max(c_p2, 0)'
     []
     [C_v]
         type = ADParsedMaterial
         property_name = C_v
         coupled_variables = 'c_v'
-        expression = 'c_v'
+        expression = 'max(c_v, 0)'
     []
     [C_t]
         type = ADParsedMaterial
         property_name = C_t
         coupled_variables = 'c_t'
-        expression = 'c_t'
+        expression = 'max(c_t, 0)'
     []
     [C_bg]
         type = ADParsedMaterial
@@ -389,13 +294,13 @@ D_v = 200
     solve_type = 'NEWTON'
     scheme = bdf2
 
-    petsc_options = '-ksp_converged_reason -snes_converged_reason -snes_ksp_ew -snes_vi_monitor'
+    petsc_options = '-ksp_converged_reason -snes_converged_reason -snes_ksp_ew'
 
     # petsc_options_iname = '-pc_type -ksp_type -pc_factor_mat_solver_type'
     # petsc_options_value = 'lu       preonly   mumps'
 
-    petsc_options_iname = '-pc_type -ksp_type -snes_type'
-    petsc_options_value = 'hypre gmres vinewtonrsls'
+    petsc_options_iname = '-pc_type -ksp_type'
+    petsc_options_value = 'hypre gmres'
 
     line_search = 'basic'
 
@@ -408,15 +313,15 @@ D_v = 200
     [TimeStepper]
         # Turn on time stepping
         type = IterationAdaptiveDT
-        dt = 1.0e-4
+        dt = 1.0e-8
         cutback_factor = 0.8
         growth_factor = 1.5
         optimal_iterations = 10
     []
 
-    # dtmax = 1e0
+    dtmax = 1e0
 
-    end_time = 1e5 # seconds
+    end_time = 1e3 # seconds
 
     # # Automatic scaling for u and w
     automatic_scaling = true
@@ -439,7 +344,7 @@ D_v = 200
 [Outputs]
     [ex]
         type = Exodus
-        file_base = output/pstv_nd
+        file_base = output/pstv_max
         execute_on = 'INITIAL TIMESTEP_END'
         time_step_interval = 1
         # sync_times_object = output_times

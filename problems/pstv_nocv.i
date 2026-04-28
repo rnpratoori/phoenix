@@ -31,8 +31,8 @@ D_v = 200
         coupled_var = c_v
         criterion_type = ABOVE
         subdomain_id = 1
-        # complement_subdomain_id = 0
-        threshold = 1e-2
+        complement_subdomain_id = 0
+        threshold = 1e-3
         execute_on = 'TIMESTEP_BEGIN'
         force_preic = true
         allow_duplicate_execution_on_initial = true
@@ -48,9 +48,6 @@ D_v = 200
     [c_p1]
     []
     [c_p2]
-    []
-    # void volume fraction
-    [c_v]
     []
     # tissue volume fraction
     [c_t]
@@ -77,13 +74,7 @@ D_v = 200
         variable = c_p2
         from_subdomains = '0 1'
     []
-    [c_v]
-        type = SolutionIC
-        from_variable = 'cv_total'
-        solution_uo = 2phase
-        variable = c_v
-        from_subdomains = '0 1'
-    []
+    
     [c_t]
         type = ConstantIC
         value = 0
@@ -92,23 +83,27 @@ D_v = 200
 []
 
 [AuxVariables]
-    [c_v_new]
+    [c_v]
         order = CONSTANT
         family = MONOMIAL
         outputs = 'ex'
-    []
-    [bounds]
-        order = FIRST
-        family = LAGRANGE
+        [InitialCondition]
+            type = SolutionIC
+            from_variable = 'cv_total'
+            solution_uo = 2phase
+            variable = c_v
+            from_subdomains = '0 1'
+        []
     []
 []
 
 [AuxKernels]
-    [c_v_new]
+    [c_v]
         type = ParsedAux
         expression = '1 - (c_p1 + c_p2 + c_t)'
         coupled_variables = 'c_p1 c_p2 c_t'
-        variable = c_v_new
+        variable = c_v
+        execute_on = 'LINEAR TIMESTEP_BEGIN'
     []
 []
 
@@ -200,18 +195,6 @@ D_v = 200
         mat_prop_coef = C_p2
         coef = ${fparse -kbg}
     []
-    # Void kernels
-    [c_v_dt]
-        type = TimeDerivative
-        variable = c_v
-    []
-    [c_v_react]
-        type = ADMatCoupledForce
-        v = c_t
-        variable = c_v
-        mat_prop_coef = C_v
-        coef = ${fparse -kbg}
-    []
     # Tissue kernels
     [c_t_dt]
         type = TimeDerivative
@@ -232,84 +215,9 @@ D_v = 200
         coef = ${fparse k2}
     []
     [c_t_react3]
-        type = ADMatCoupledForce
-        v = 'c_p1 c_p2 c_v'
-        mat_prop_coef = C_t
+        type = ADMatReaction
+        reaction_rate = C_t_bound
         variable = c_t
-        coef = ${fparse kbg}
-    []
-[]
-
-[Bounds]
-    [c_s_ub]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_s
-        bound_type = upper
-        bound_value = 1
-    []
-    [c_s_lb]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_s
-        bound_type = lower
-        bound_value = 0
-    []
-    [c_p1_lb]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_p1
-        bound_type = lower
-        bound_value = 0
-    []
-    [c_p1_ub]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_p1
-        bound_type = upper
-        bound_value = 1
-    []
-    [c_p2_lb]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_p2
-        bound_type = lower
-        bound_value = 0
-    []
-    [c_p2_ub]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_p2
-        bound_type = upper
-        bound_value = 1
-    []
-    [c_t_lb]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_t
-        bound_type = lower
-        bound_value = 0
-    []
-    [c_t_ub]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_t
-        bound_type = upper
-        bound_value = 1
-    []
-    [c_v_lb]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_v
-        bound_type = lower
-        bound_value = 0
-    []
-    [c_v_ub]
-        type = ConstantBounds
-        variable = bounds
-        bounded_variable = c_v
-        bound_type = upper
-        bound_value = 1
     []
 []
 
@@ -360,6 +268,14 @@ D_v = 200
         coupled_variables = 'c_t'
         expression = 'c_t'
     []
+    [C_t_bound]
+        type = ADParsedMaterial
+        property_name = C_t_bound
+        coupled_variables = 'c_t'
+        constant_names = 'kbg'
+        constant_expressions = '${kbg}'
+        expression = 'if(c_t>1e-3, -kbg*(1-c_t), 0)'
+    []
     [C_bg]
         type = ADParsedMaterial
         property_name = C_bg
@@ -408,7 +324,7 @@ D_v = 200
     [TimeStepper]
         # Turn on time stepping
         type = IterationAdaptiveDT
-        dt = 1.0e-4
+        dt = 1.0e-8
         cutback_factor = 0.8
         growth_factor = 1.5
         optimal_iterations = 10
@@ -416,7 +332,7 @@ D_v = 200
 
     # dtmax = 1e0
 
-    end_time = 1e5 # seconds
+    end_time = 300 # seconds
 
     # # Automatic scaling for u and w
     automatic_scaling = true
@@ -439,7 +355,7 @@ D_v = 200
 [Outputs]
     [ex]
         type = Exodus
-        file_base = output/pstv_nd
+        file_base = output/pstv_nocv
         execute_on = 'INITIAL TIMESTEP_END'
         time_step_interval = 1
         # sync_times_object = output_times

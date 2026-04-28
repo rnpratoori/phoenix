@@ -3,13 +3,13 @@ ny = 25     # number of elements per side
 dx = 2       # ND size of the side
 dy = 1       # ND size of the side
 
-k1 = 2
-k2 = 1
+k1 = 1
+k2 = 0.1
 # kv = 100
-D_p1 = 5
-D_p2 = 1
-D_t = 10
-D_v = 100
+D_p1 = 0.05
+D_p2 = 0.01
+D_t = 1
+D_v = 200
 
 
 [GlobalParams]
@@ -36,7 +36,7 @@ D_v = 100
         criterion_type = ABOVE
         subdomain_id = 1
         # complement_subdomain_id = 0
-        threshold = 0
+        threshold = 1e-3
         execute_on = 'TIMESTEP_BEGIN'
         force_preic = true
         allow_duplicate_execution_on_initial = true
@@ -177,7 +177,7 @@ D_v = 100
         type = Pressure
         variable = disp_x
         boundary = right
-        factor = -1e9
+        factor = -1e4
     []
     [bottom_fix]
         type = DirichletBC
@@ -230,6 +230,7 @@ D_v = 100
         variable = c_p1
         mat_prop_coef = kbg
         coef = -1
+        block = '0'
     []
     [c_p2_dt]
         type = TimeDerivative
@@ -248,6 +249,7 @@ D_v = 100
         variable = c_p2
         mat_prop_coef = kbg
         coef = -1
+        block = '0'
     []
     # Void kernels
     [c_v_dt]
@@ -260,6 +262,7 @@ D_v = 100
         variable = c_v
         mat_prop_coef = kbg
         coef = -1
+        block = '1'
     []
     # Tissue kernels
     [c_t_dt]
@@ -337,7 +340,8 @@ D_v = 100
         type = ADParsedMaterial
         property_name = kbg
         coupled_variables = 'theta'
-        expression = '1 + cos(theta)^2'
+        expression = '1'
+        # expression = '1 + cos(theta)^2'
     []
     [kbd]
         type = ADParsedMaterial
@@ -351,13 +355,30 @@ D_v = 100
         sum_materials = 'kbg kbd'
     []
     # Mechanical properties
-    [strain]
-        type = ComputeLagrangianStrain
-    []
     [hyperelastic]
         type = ComputeNeoHookeanStress
-        lambda = 1e9
-        mu = 1e9
+        lambda = lambda
+        mu = mu
+    []
+    [mu]
+        type = ParsedMaterial
+        property_name = mu
+        coupled_variables = 'c_p1 c_p2 c_t'
+        expression = '(1e6*c_p1 + 4e5*c_p2 + 1e4*c_t) + 1e4'
+        output_properties = 'mu'
+        outputs = 'ex'
+    []
+    [lambda]
+        type = ParsedMaterial
+        property_name = lambda
+        coupled_variables = 'c_p1 c_p2 c_t'
+        expression = 1e7
+        # expression = '(1.67e8*c_p1 + 6.67e7*c_p2 + 1.67e6*c_t) + 1e6'
+        output_properties = 'lambda'
+        outputs = 'ex'
+    []
+    [strain]
+        type = ComputeLagrangianStrain
     []
 []
 
@@ -381,10 +402,10 @@ D_v = 100
         execute_on  = 'timestep_end'
     []
     [avg_disp_right]
-      type = SideAverageValue
-      variable = disp_x
-      boundary = right
-      execute_on = 'timestep_end'
+        type = SideAverageValue
+        variable = disp_x
+        boundary = right
+        execute_on = 'timestep_end'
     []
 []
 
@@ -398,7 +419,7 @@ D_v = 100
     petsc_options_iname = '-pc_type -ksp_type -pc_factor_mat_solver_type'
     petsc_options_value = 'lu       preonly   mumps'
 
-    line_search = 'basic'
+    line_search = 'bt'
 
     l_tol = 1e-10
     l_abs_tol = 1e-10
@@ -440,5 +461,5 @@ D_v = 100
 
 [Debug]
     show_material_props = true
-    show_execution_order = 'INITIAL TIMESTEP_BEGIN'
+    # show_execution_order = 'INITIAL TIMESTEP_BEGIN'
 []
